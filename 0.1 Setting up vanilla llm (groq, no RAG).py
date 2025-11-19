@@ -98,7 +98,6 @@ print("\n✓ All imports successful! Ready to proceed.")
 
 ########################################################
 
-# MODEL CONFIGURATION
 # Change this to switch between models
 MODEL_NAME = "all-mpnet-base-v2"  # Options: "all-MiniLM-L6-v2" or "all-mpnet-base-v2"
 
@@ -116,3 +115,81 @@ print(f"  Max sequence length: {model.max_seq_length} tokens")
    # print("\n💡 Tip: For better quality (but slower speed), try 'all-mpnet-base-v2'")
 # else:
    # print("\n💡 You're using the higher-quality model - embeddings will be more accurate!")
+
+########################################################
+
+# DOCUMENT INGESTION
+
+########################################################
+
+import os
+import pdfplumber  # Recommended for clean text extraction
+import pandas as pd
+import warnings
+import re
+import random
+
+warnings.filterwarnings('ignore')
+pd.set_option('display.max_colwidth', 120)
+
+# Path to your folder containing the PDFs
+PDF_FOLDER = "G:\My Drive\Philosophy of Mathematics\One Book"  
+
+# Function: extract text-only from a PDF
+def load_pdf_text(pdf_path):
+    """Extract text from each page of a PDF using pdfplumber."""
+    import pdfplumber
+    text = ""
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+    except Exception as e:
+        print(f"⚠️ Could not read {os.path.basename(pdf_path)}: {e}")
+        return ""
+    return text
+
+# Step 1: Load all PDFs in the folder
+pdf_docs = {}
+for filename in os.listdir(PDF_FOLDER):
+    if filename.endswith(".pdf"):
+        pdf_path = os.path.join(PDF_FOLDER, filename)
+        doc_name = os.path.splitext(filename)[0]
+        text = load_pdf_text(pdf_path)
+        if len(text.strip()) > 0:  # Only store non-empty documents
+            pdf_docs[doc_name] = text
+
+print(f"✓ Loaded {len(pdf_docs)} PDF documents from: {PDF_FOLDER}")
+
+# Step 2: Store documents in a dictionary
+DOCUMENTS = pdf_docs
+
+# Step 3: Display document overview
+print("\nAvailable Documents:")
+print("=" * 60)
+for i, (name, doc) in enumerate(DOCUMENTS.items(), 1):
+    word_count = len(doc.split())
+    char_count = len(doc)
+    
+    # ✅ New: Count paragraphs (split on double newlines)
+    paragraphs = [p for p in re.split(r'\n\s*\n', doc.strip()) if p.strip()]
+    paragraph_count = len(paragraphs)
+    
+    print(f"{i}. {name}")
+    print(f"   - Words: {word_count:,}")
+    print(f"   - Characters: {char_count:,}")
+    print(f"   - Paragraphs: {paragraph_count:,}")
+    print()
+
+# Step 4: Select a document
+SELECTED_DOCUMENT = list(DOCUMENTS.keys())[0]  # e.g., "Philosophy_of_Mathematics"
+document = DOCUMENTS[SELECTED_DOCUMENT]
+
+# Step 5: Display a preview
+print(f"\n✓ Selected: {SELECTED_DOCUMENT}")
+print(f"\nFirst 500 characters of extracted text:")
+print("=" * 60)
+print(document[:3000] + "...")
+print("=" * 60)
