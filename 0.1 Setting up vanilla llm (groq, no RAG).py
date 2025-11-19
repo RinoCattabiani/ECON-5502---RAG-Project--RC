@@ -193,3 +193,77 @@ print(f"\nFirst 500 characters of extracted text:")
 print("=" * 60)
 print(document[:3000] + "...")
 print("=" * 60)
+
+########################################################
+
+# DOCUMENT CHUNKING 
+
+########################################################
+
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+import re
+
+def chunk_document_semantically(
+    document,
+    similarity_threshold=0.5,
+    overlap_paragraphs=1,
+    model_name='all-mpnet-base-v2',
+    min_chars=750
+):
+    """
+    Chunk document semantically based on paragraph embeddings.
+    Ensures each chunk has at least `min_chars` characters.
+    """
+    # 🔹 Load embedding model
+    model = SentenceTransformer(model_name)
+
+    # Normalize and split into paragraphs
+    document = document.replace('\r\n', '\n').replace('\r', '\n')
+    paragraphs = re.split(r'\n\s*\n|(?<=\.)\s+(?=[A-Z])', document)
+    paragraphs = [p.strip() for p in paragraphs if len(p.strip()) > 0]
+
+    if len(paragraphs) == 0:
+        return []
+
+    # 🔹 Compute embeddings
+    embeddings = model.encode(paragraphs, show_progress_bar=True)
+
+    chunks = []
+    current_chunk = [paragraphs[0]]
+
+    for i in range(1, len(paragraphs)):
+        sim = cosine_similarity([embeddings[i-1]], [embeddings[i]])[0][0]
+
+        if sim < similarity_threshold:
+            # Check length before finalizing this chunk
+            temp_chunk = "\n\n".join(current_chunk)
+            if len(temp_chunk) < min_chars and i < len(paragraphs) - 1:
+                # If too short, merge forward
+                current_chunk.append(paragraphs[i])
+                continue
+            else:
+                chunks.append(temp_chunk)
+                # Add overlap
+                current_chunk = paragraphs[max(0, i - overlap_paragraphs):i+1]
+        else:
+            current_chunk.append(paragraphs[i])
+
+    # Append last chunk
+    if current_chunk:
+        chunks.append("\n\n".join(current_chunk))
+
+    return chunks
+
+# Call the function and store the result
+chunks = chunk_document_semantically(document)
+
+# Display first few chunks
+print(f"\n\nFirst {len(chunks)} Chunks:")
+print("=" * 50)
+for i, chunk in enumerate(chunks[:5]):
+    print(f"\nChunk {i}:")
+    print(chunk)
+    print(f"\nLength: {len(chunk)} characters")
+    print("\t==========")
