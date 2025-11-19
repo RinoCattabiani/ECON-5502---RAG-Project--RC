@@ -655,3 +655,403 @@ for i, query in enumerate(queries, 1):
     print(f"First chunk: {chunks[0][:100]}...")
 
     print("\n" + "="*80 + "\n")
+
+########################################################
+
+# CHUNK RETRIEVAL
+
+########################################################
+
+# Calculate cosine similarity between query and all chunks
+print("Calculating similarities...")
+similarities = util.cos_sim(query_embedding, embeddings)[0].numpy()
+
+# Add similarities to dataframe
+df['similarity'] = similarities
+
+print(f"✓ Similarities calculated for {len(similarities)} chunks")
+print(f"\nSimilarity Statistics:")
+print(f"  Mean: {similarities.mean():.4f}")
+print(f"  Std dev: {similarities.std():.4f}")
+print(f"  Min: {similarities.min():.4f}")
+print(f"  Max: {similarities.max():.4f}")
+
+############################
+
+# No RAG Retrieval 
+
+############################
+
+def no_rag_answer(question):
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": question}
+        ]
+    )
+    return response.choices[0].message.content
+
+# Get all queries for the selected document
+queries = EXAMPLE_QUERIES[SELECTED_DOCUMENT]
+
+for i, query in enumerate(queries, 1):
+    print("="*80)
+    print(f"Query {i}: {query}")
+    print("="*80)
+
+    # 1. Call NO-RAG LLM
+    print("\nCalling NO-RAG LLM...")
+    no_rag_text = no_rag_answer(query)
+
+    print("\nNO-RAG Answer (first 300 chars):")
+    print(no_rag_text[:300] + "...\n")
+
+    # 2. Embed the answer
+    print("Embedding NO-RAG answer...")
+    no_rag_embedding = model.encode(no_rag_text, convert_to_numpy=True)
+
+    print(f"✓ Embedded! Shape: {no_rag_embedding.shape}")
+
+    # 3. Quick similarity check (answer → first chunk)
+    sample_similarity = util.cos_sim(no_rag_embedding, embeddings[0]).item()
+    print(f"\nSimilarity (NO-RAG answer → first chunk): {sample_similarity:.4f}")
+    print(f"First chunk preview: {chunks[0][:100]}...")
+
+    print("\n" + "="*80 + "\n")
+
+############################
+
+# Method 1 - Top K
+
+############################
+
+# RETRIEVAL PARAMETERS
+TOP_K = 5  # Number of chunks to retrieve
+
+# Retrieve top-k chunks
+top_k_results = df.nlargest(TOP_K, 'similarity')[['chunk_id', 'text', 'similarity']].copy()
+
+print(f"Top {TOP_K} Most Similar Chunks:")
+print("="*80)
+for idx, row in top_k_results.iterrows():
+    print(f"\nChunk {row['chunk_id']} | Similarity: {row['similarity']:.4f}")
+    print(f"{row['text'][:300]}...")
+    print("-"*80)
+
+############################
+
+# Method 2 - Threshold-Based Retrieval
+
+############################
+
+# THRESHOLD PARAMETER
+SIMILARITY_THRESHOLD = 0.3  # Minimum similarity score (0.0 to 1.0)
+
+# Retrieve chunks above threshold
+threshold_results = df[df['similarity'] >= SIMILARITY_THRESHOLD].nlargest(20, 'similarity')[['chunk_id', 'text', 'similarity']].copy()
+
+print(f"Chunks with Similarity >= {SIMILARITY_THRESHOLD}:")
+print("="*80)
+print(f"Found {len(threshold_results)} chunks\n")
+
+for idx, row in threshold_results.head(5).iterrows():  # Show top 5
+    print(f"\nChunk {row['chunk_id']} | Similarity: {row['similarity']:.4f}")
+    print(f"{row['text'][:300]}...")
+    print("-"*80)
+
+############################
+
+# Method 3 - Combined
+
+############################
+
+# Combined retrieval
+combined_results = df[df['similarity'] >= SIMILARITY_THRESHOLD].nlargest(TOP_K, 'similarity')[['chunk_id', 'text', 'similarity']].copy()
+
+print(f"Combined Retrieval (Top {TOP_K} with Similarity >= {SIMILARITY_THRESHOLD}):")
+print("="*80)
+print(f"Retrieved {len(combined_results)} chunks\n")
+
+for idx, row in combined_results.iterrows():
+    print(f"\nChunk {row['chunk_id']} | Similarity: {row['similarity']:.4f}")
+    print(f"{row['text'][:300]}...")
+    print("-"*80)
+
+############################
+
+# Comparison of Retrieval Methods
+
+############################
+
+# Visualize similarity distribution with retrieval boundaries
+plt.figure(figsize=(12, 6))
+
+plt.hist(similarities, bins=50, color='lightblue', alpha=0.7, edgecolor='black')
+plt.axvline(SIMILARITY_THRESHOLD, color='red', linestyle='--', linewidth=2, 
+            label=f'Threshold: {SIMILARITY_THRESHOLD}')
+
+# Mark top-k cutoff
+if len(top_k_results) > 0:
+    top_k_cutoff = top_k_results.iloc[-1]['similarity']
+    plt.axvline(top_k_cutoff, color='green', linestyle='--', linewidth=2,
+                label=f'Top-{TOP_K} Cutoff: {top_k_cutoff:.3f}')
+
+plt.xlabel('Cosine Similarity')
+plt.ylabel('Frequency')
+plt.title('Distribution of Similarities with Retrieval Boundaries')
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+print("\nRetrieval Method Comparison:")
+print("="*50)
+print(f"Top-K ({TOP_K}): {len(top_k_results)} chunks retrieved")
+print(f"Threshold (>={SIMILARITY_THRESHOLD}): {len(threshold_results)} chunks retrieved")
+print(f"Combined: {len(combined_results)} chunks retrieved")
+
+print("\n💡 Trade-offs:")
+print("  - Top-K: Guarantees fixed number of results, but may include irrelevant chunks")
+print("  - Threshold: Ensures quality, but number of results varies")
+print("  - Combined: Best of both - quality assurance with upper limit")
+
+############################
+
+# Visualizing Query in Embedding Space
+
+############################
+
+# Embed the query in 2D space using the same UMAP reducer
+query_2d = reducer_2d.transform(query_embedding.reshape(1, -1))[0]
+
+# Store retrieval method choice
+RETRIEVAL_METHOD = "top_k"  # Options: "top_k", "threshold", "combined"
+
+# Get retrieved chunk IDs based on method
+if RETRIEVAL_METHOD == "top_k":
+    retrieved_ids = set(top_k_results['chunk_id'])
+    cutoff_similarity = top_k_results.iloc[-1]['similarity']
+elif RETRIEVAL_METHOD == "threshold":
+    retrieved_ids = set(threshold_results['chunk_id'])
+    cutoff_similarity = SIMILARITY_THRESHOLD
+else:  # combined
+    retrieved_ids = set(combined_results['chunk_id'])
+    cutoff_similarity = combined_results.iloc[-1]['similarity'] if len(combined_results) > 0 else SIMILARITY_THRESHOLD
+
+# Calculate radius in UMAP space (approximate)
+retrieved_points = df[df['chunk_id'].isin(retrieved_ids)][['umap_x', 'umap_y']].values
+if len(retrieved_points) > 0:
+    distances = np.sqrt(np.sum((retrieved_points - query_2d)**2, axis=1))
+    radius = distances.max()
+else:
+    radius = 0
+
+print(f"Query embedded in 2D UMAP space")
+print(f"Retrieval method: {RETRIEVAL_METHOD}")
+print(f"Retrieved chunks: {len(retrieved_ids)}")
+print(f"Cutoff similarity: {cutoff_similarity:.4f}")
+print(f"Visualization radius: {radius:.4f}")
+
+############################
+
+# 2D Visualization with Query
+
+############################
+
+# OPTION 1: Interactive with ipywidgets
+if WIDGETS_AVAILABLE:
+    def plot_query_2d_interactive(num_chunks):
+        plot_df = df.head(num_chunks)
+        
+        fig, ax = plt.subplots(figsize=(14, 10))
+        
+        # Plot non-retrieved chunks in gray
+        non_retrieved = plot_df[~plot_df['chunk_id'].isin(retrieved_ids)]
+        ax.scatter(non_retrieved['umap_x'], non_retrieved['umap_y'], 
+                  c='lightgray', s=50, alpha=0.3, label='Not Retrieved')
+        
+        # Plot retrieved chunks in green
+        retrieved = plot_df[plot_df['chunk_id'].isin(retrieved_ids)]
+        ax.scatter(retrieved['umap_x'], retrieved['umap_y'], 
+                  c='limegreen', s=150, alpha=0.7, edgecolors='darkgreen', 
+                  linewidth=2, label='Retrieved', marker='o')
+        
+        # Plot query as red star
+        ax.scatter(query_2d[0], query_2d[1], c='red', s=500, marker='*', 
+                  edgecolors='darkred', linewidth=2, label='Query', zorder=5)
+        
+        # Draw circle around query
+        circle = plt.Circle((query_2d[0], query_2d[1]), radius, 
+                           color='blue', fill=False, linestyle='--', 
+                           linewidth=2, alpha=0.5, label=f'Retrieval Boundary')
+        ax.add_patch(circle)
+        
+        # Draw filled circle with transparency
+        circle_fill = plt.Circle((query_2d[0], query_2d[1]), radius, 
+                                color='lightblue', alpha=0.1)
+        ax.add_patch(circle_fill)
+        
+        ax.set_xlabel('UMAP Dimension 1', fontsize=12)
+        ax.set_ylabel('UMAP Dimension 2', fontsize=12)
+        ax.set_title(f'Query and Retrieved Chunks in 2D Embedding Space\n' + 
+                    f'Method: {RETRIEVAL_METHOD} | Retrieved: {len(retrieved_ids)} chunks',
+                    fontsize=14),ax.legend(loc='best', fontsize=10)
+        ax.grid(alpha=0.3)
+        ax.set_aspect('equal', adjustable='box')
+        plt.tight_layout()
+        plt.show()
+    
+    interact(plot_query_2d_interactive, 
+             num_chunks=widgets.IntSlider(min=5, max=len(chunks), step=5, value=min(50, len(chunks))))
+else:
+    # OPTION 2: Simple version
+    NUM_CHUNKS_QUERY = min(50, len(chunks))  # Modify this value
+    
+    plot_df = df.head(NUM_CHUNKS_QUERY)
+    
+    fig, ax = plt.subplots(figsize=(14, 10))
+    
+    # Plot non-retrieved chunks in gray
+    non_retrieved = plot_df[~plot_df['chunk_id'].isin(retrieved_ids)]
+    ax.scatter(non_retrieved['umap_x'], non_retrieved['umap_y'], 
+              c='lightgray', s=50, alpha=0.3, label='Not Retrieved')
+    
+    # Plot retrieved chunks in green
+    retrieved = plot_df[plot_df['chunk_id'].isin(retrieved_ids)]
+    ax.scatter(retrieved['umap_x'], retrieved['umap_y'], 
+              c='limegreen', s=150, alpha=0.7, edgecolors='darkgreen', 
+              linewidth=2, label='Retrieved', marker='o')
+    
+    # Plot query as red star
+    ax.scatter(query_2d[0], query_2d[1], c='red', s=500, marker='*', 
+              edgecolors='darkred', linewidth=2, label='Query', zorder=5)
+    
+    # Draw circle around query
+    circle = plt.Circle((query_2d[0], query_2d[1]), radius, 
+                       color='blue', fill=False, linestyle='--', 
+                       linewidth=2, alpha=0.5, label=f'Retrieval Boundary')
+    ax.add_patch(circle)
+    
+    # Draw filled circle with transparency
+    circle_fill = plt.Circle((query_2d[0], query_2d[1]), radius, 
+                            color='lightblue', alpha=0.1)
+    ax.add_patch(circle_fill)
+    
+    ax.set_xlabel('UMAP Dimension 1', fontsize=12)
+    ax.set_ylabel('UMAP Dimension 2', fontsize=12)
+    ax.set_title(f'Query and Retrieved Chunks in 2D Embedding Space\n' + 
+                f'Method: {RETRIEVAL_METHOD} | Retrieved: {len(retrieved_ids)} chunks',
+                fontsize=14)
+    ax.legend(loc='best', fontsize=10)
+    ax.grid(alpha=0.3)
+    ax.set_aspect('equal', adjustable='box')
+    plt.tight_layout()
+    plt.show()
+    
+    print("\n💡 To change the number of chunks displayed, modify NUM_CHUNKS_QUERY above")
+
+############################
+
+# 3D Visualization with Query
+
+############################
+
+# Embed the query in 3D space
+query_3d = reducer_3d.transform(query_embedding.reshape(1, -1))[0]
+
+# Calculate radius in 3D space
+retrieved_points_3d = df[df['chunk_id'].isin(retrieved_ids)][['umap_x_3d', 'umap_y_3d', 'umap_z_3d']].values
+if len(retrieved_points_3d) > 0:
+    distances_3d = np.sqrt(np.sum((retrieved_points_3d - query_3d)**2, axis=1))
+    radius_3d = distances_3d.max()
+else:
+    radius_3d = 0
+
+print(f"Query embedded in 3D UMAP space")
+print(f"3D visualization radius: {radius_3d:.4f}")
+
+# Create 3D visualization
+NUM_CHUNKS_QUERY_3D = min(50, len(chunks))  # Modify if not using widgets
+
+plot_df = df.head(NUM_CHUNKS_QUERY_3D)
+
+# Separate retrieved and non-retrieved
+non_retrieved = plot_df[~plot_df['chunk_id'].isin(retrieved_ids)]
+retrieved = plot_df[plot_df['chunk_id'].isin(retrieved_ids)]
+
+# Create traces
+trace_non_retrieved = go.Scatter3d(
+    x=non_retrieved['umap_x_3d'],
+    y=non_retrieved['umap_y_3d'],
+    z=non_retrieved['umap_z_3d'],
+    mode='markers',
+    name='Not Retrieved',
+    marker=dict(size=4, color='lightgray', opacity=0.3),
+    text=[f"Chunk {i}" for i in non_retrieved['chunk_id']],
+    hoverinfo='text'
+)
+
+trace_retrieved = go.Scatter3d(
+    x=retrieved['umap_x_3d'],
+    y=retrieved['umap_y_3d'],
+    z=retrieved['umap_z_3d'],
+    mode='markers',
+    name='Retrieved',
+    marker=dict(size=8, color='limegreen', opacity=0.8, 
+                line=dict(color='darkgreen', width=2)),
+    text=[f"Chunk {i}: {text[:100]}..." for i, text in zip(retrieved['chunk_id'], retrieved['text'])],
+    hoverinfo='text'
+)
+
+trace_query = go.Scatter3d(
+    x=[query_3d[0]],
+    y=[query_3d[1]],
+    z=[query_3d[2]],
+    mode='markers',
+    name='Query',
+    marker=dict(size=15, color='red', symbol='diamond',
+                line=dict(color='darkred', width=2)),
+    text=[f"Query: {query}"],
+    hoverinfo='text'
+)
+
+# Create sphere surface
+u = np.linspace(0, 2 * np.pi, 50)
+v = np.linspace(0, np.pi, 50)
+x_sphere = radius_3d * np.outer(np.cos(u), np.sin(v)) + query_3d[0]
+y_sphere = radius_3d * np.outer(np.sin(u), np.sin(v)) + query_3d[1]
+z_sphere = radius_3d * np.outer(np.ones(np.size(u)), np.cos(v)) + query_3d[2]
+
+trace_sphere = go.Surface(
+    x=x_sphere,
+    y=y_sphere,
+    z=z_sphere,
+    name='Retrieval Boundary',
+    colorscale=[[0, 'lightblue'], [1, 'lightblue']],
+    opacity=0.2,
+    showscale=False,
+    hoverinfo='skip'
+)
+
+# Create figure
+fig = go.Figure(data=[trace_non_retrieved, trace_retrieved, trace_query, trace_sphere])
+
+fig.update_layout(
+    title=f'Query and Retrieved Chunks in 3D Embedding Space<br>' + 
+          f'Method: {RETRIEVAL_METHOD} | Retrieved: {len(retrieved_ids)} chunks',
+    scene=dict(
+        xaxis_title='UMAP Dimension 1',
+        yaxis_title='UMAP Dimension 2',
+        zaxis_title='UMAP Dimension 3',
+        aspectmode='data'
+    ),
+    width=1000,
+    height=800
+)
+
+fig.show()
+
+print("\n💡 Rotate, zoom, and pan the 3D plot to explore!")
+print("💡 The blue sphere shows the retrieval boundary")
+print("💡 Green points inside the sphere are retrieved chunks")
