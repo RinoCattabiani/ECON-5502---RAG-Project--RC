@@ -600,3 +600,58 @@ else:
     
     print("\n💡 To change the number of chunks displayed, modify NUM_CHUNKS_3D above")
     print("💡 You can rotate, zoom, and pan the 3D plot by clicking and dragging!")
+
+########################################################
+
+# USER QUERY EMBEDDING
+
+########################################################
+
+# Example queries for Philosophy of Mathematics documents
+EXAMPLE_QUERIES = {
+    "Philosophy of Mathematics": [
+        "What is the concept of a set?",
+        "How do nominalists explain the existence of mathematical objects?",
+        "What is the difference between logicism, formalism, and intuitionism?",
+        "How does Gödel's incompleteness theorem impact the philosophy of mathematics?",
+        "What is the relationship between mathematics and empirical science?",
+        "How do structuralists interpret mathematical truth?",
+        "What is the role of proof and rigor in mathematical knowledge?",
+        "Can mathematics be considered a purely linguistic or symbolic system?",
+        "How does the philosophy of mathematics relate to ontology and epistemology?",
+        "What are the main arguments for and against mathematical realism?"
+    ]
+}
+
+# Display example queries for selected document
+SELECTED_DOCUMENT = "Philosophy of Mathematics"
+
+# Display example queries for selected document
+print(f"Example queries for {SELECTED_DOCUMENT}:")
+print("="*50)
+for i, query in enumerate(EXAMPLE_QUERIES[SELECTED_DOCUMENT], 1):
+    print(f"{i}. {query}")
+print("\n" + "="*50)
+
+# Get all queries for the selected document
+queries = EXAMPLE_QUERIES[SELECTED_DOCUMENT]
+
+for i, query in enumerate(queries, 1):
+    print("="*80)
+    print(f"Query {i}: {query}")
+    print("="*80)
+
+    # Embed the query
+    print("\nEmbedding query...")
+    query_embedding = model.encode(query, convert_to_numpy=True)
+
+    print(f"✓ Query embedded!")
+    print(f" Shape: {query_embedding.shape}")
+    print(f" Dimensions: {len(query_embedding)}")
+
+    # Compute similarity to the first chunk (just as a quick preview)
+    sample_similarity = util.cos_sim(query_embedding, embeddings[0]).item()
+    print(f"\nSimilarity to first chunk: {sample_similarity:.4f}")
+    print(f"First chunk: {chunks[0][:100]}...")
+
+    print("\n" + "="*80 + "\n")
