@@ -332,3 +332,271 @@ plt.show()
 
 print("\n💡 Each dimension captures different semantic aspects of the text.")
 print("   Similar chunks will have similar patterns across these dimensions.")
+
+########################################################
+
+# CHUNK STORAGE
+
+########################################################
+
+# Create DataFrame with chunks and embeddings
+df = pd.DataFrame({
+    'chunk_id': range(len(chunks)),
+    'text': chunks,
+    'embedding': list(embeddings)
+})
+
+print("DataFrame Created:")
+print("="*50)
+print(f"Shape: {df.shape}")
+print(f"Columns: {list(df.columns)}")
+print(f"\nMemory usage:")
+print(df.memory_usage(deep=True))
+
+# Display first few rows
+print("\n\nFirst 5 rows:")
+print("="*50)
+display_df = df.head().copy()
+display_df['text'] = display_df['text'].str[:100] + '...'  # Truncate for display
+display_df['embedding'] = display_df['embedding'].apply(lambda x: f"array({x.shape})")
+display(display_df)
+
+############################
+
+# Understanding Chunk Similarity Distribution
+
+############################
+
+# Compute pairwise cosine similarities
+# For performance, we'll sample if there are too many chunks
+sample_size = min(50, len(chunks))  # Use up to 50 chunks for visualization
+# sample_size = 50
+sample_indices = np.random.choice(len(chunks), sample_size, replace=False)
+sample_embeddings = embeddings[sample_indices]
+
+print(f"Computing pairwise similarities for {sample_size} chunks...")
+similarity_matrix = util.cos_sim(sample_embeddings, sample_embeddings).numpy()
+
+# Calculate statistics (excluding diagonal which is always 1.0)
+mask = np.triu(np.ones_like(similarity_matrix, dtype=bool), k=1)
+upper_triangle = similarity_matrix[mask]
+
+print(f"\nSimilarity Statistics:")
+print(f"="*50)
+print(f"Mean similarity: {upper_triangle.mean():.3f}")
+print(f"Std dev: {upper_triangle.std():.3f}")
+print(f"Min similarity: {upper_triangle.min():.3f}")
+print(f"Max similarity: {upper_triangle.max():.3f}")
+
+# Create visualizations
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+
+# Heatmap
+sns.heatmap(similarity_matrix, cmap='YlOrRd', ax=ax1, 
+            xticklabels=False, yticklabels=False,
+            vmin=0, vmax=1, cbar_kws={'label': 'Cosine Similarity'})
+ax1.set_title(f'Pairwise Chunk Similarity Heatmap\n({sample_size} chunks)', fontsize=12)
+ax1.set_xlabel('Chunk Index')
+ax1.set_ylabel('Chunk Index')
+
+# Histogram
+ax2.hist(upper_triangle, bins=30, color='steelblue', alpha=0.7, edgecolor='black')
+ax2.axvline(upper_triangle.mean(), color='red', linestyle='--', linewidth=2, label=f'Mean: {upper_triangle.mean():.3f}')
+ax2.set_xlabel('Cosine Similarity')
+ax2.set_ylabel('Frequency')
+ax2.set_title('Distribution of Pairwise Similarities')
+ax2.legend()
+ax2.grid(alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+# Interpretation
+print("\n" + "="*50)
+print("Interpretation:")
+if upper_triangle.mean() > 0.8:
+    print("⚠ High average similarity (>0.8): Chunks may be redundant.")
+    print("  → Consider: Larger chunk sizes or different document")
+elif upper_triangle.mean() < 0.3:
+    print("⚠ Low average similarity (<0.3): Chunks may be too disparate.")
+    print("  → Consider: Smaller chunk sizes or more overlap")
+else:
+    print("✓ Good similarity distribution! Chunks have diversity while maintaining coherence.")
+
+# Look for clusters in the heatmap
+print("\n💡 In the heatmap, bright squares indicate clusters of similar chunks.")
+print("   This often represents chunks from the same topic or section of the document.")
+
+############################
+
+# Visualizing Embeddings in Reduced Dimensions
+
+############################
+
+# Reduce embeddings to 2D using UMAP
+print("Reducing embeddings to 2D with UMAP...")
+print("This may take a minute...\n")
+
+reducer_2d = umap.UMAP(n_components=2, random_state=42, n_neighbors=15, min_dist=0.1)
+embeddings_2d = reducer_2d.fit_transform(embeddings)
+
+print(f"✓ Reduced to 2D: shape {embeddings_2d.shape}")
+
+# Store in DataFrame
+df['umap_x'] = embeddings_2d[:, 0]
+df['umap_y'] = embeddings_2d[:, 1]
+
+############################
+
+# 2D Visualization with UMAP
+
+############################
+
+# OPTION 1: Interactive with ipywidgets
+if WIDGETS_AVAILABLE:
+    def plot_2d_interactive(num_chunks):
+        plot_df = df.head(num_chunks)
+        
+        plt.figure(figsize=(12, 8))
+        scatter = plt.scatter(plot_df['umap_x'], plot_df['umap_y'], 
+                            c=plot_df['chunk_id'], cmap='viridis', 
+                            s=100, alpha=0.6, edgecolors='black', linewidth=0.5)
+        
+        # Add labels for first few points
+        for idx in range(min(10, num_chunks)):
+            plt.annotate(str(idx), 
+                        (plot_df.iloc[idx]['umap_x'], plot_df.iloc[idx]['umap_y']),
+                        xytext=(5, 5), textcoords='offset points', fontsize=8)
+        
+        plt.colorbar(scatter, label='Chunk ID')
+        plt.xlabel('UMAP Dimension 1')
+        plt.ylabel('UMAP Dimension 2')
+        plt.title(f'2D UMAP Projection of {num_chunks} Chunk Embeddings')
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        plt.show()
+    
+    interact(plot_2d_interactive, 
+             num_chunks=widgets.IntSlider(min=5, max=len(chunks), step=5, value=min(50, len(chunks))))
+else:
+    # OPTION 2: Simple version
+    NUM_CHUNKS_TO_PLOT = min(50, len(chunks))  # Modify this value
+    
+    plot_df = df.head(NUM_CHUNKS_TO_PLOT)
+    
+    plt.figure(figsize=(12, 8))
+    scatter = plt.scatter(plot_df['umap_x'], plot_df['umap_y'], 
+                        c=plot_df['chunk_id'], cmap='viridis', 
+                        s=100, alpha=0.6, edgecolors='black', linewidth=0.5)
+    
+    # Add labels for first few points
+    for idx in range(min(10, NUM_CHUNKS_TO_PLOT)):
+        plt.annotate(str(idx), 
+                    (plot_df.iloc[idx]['umap_x'], plot_df.iloc[idx]['umap_y']),
+                    xytext=(5, 5), textcoords='offset points', fontsize=8)
+    
+    plt.colorbar(scatter, label='Chunk ID')
+    plt.xlabel('UMAP Dimension 1')
+    plt.ylabel('UMAP Dimension 2')
+    plt.title(f'2D UMAP Projection of {NUM_CHUNKS_TO_PLOT} Chunk Embeddings')
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+    
+    print("\n💡 To change the number of chunks displayed, modify NUM_CHUNKS_TO_PLOT above")
+
+############################
+
+# 3D Visualization with UMAP
+
+############################
+
+# Reduce embeddings to 3D using UMAP
+print("Reducing embeddings to 3D with UMAP...")
+print("This may take a minute...\n")
+
+reducer_3d = umap.UMAP(n_components=3, random_state=42, n_neighbors=15, min_dist=0.1)
+embeddings_3d = reducer_3d.fit_transform(embeddings)
+
+print(f"✓ Reduced to 3D: shape {embeddings_3d.shape}")
+
+# Store in DataFrame
+df['umap_x_3d'] = embeddings_3d[:, 0]
+df['umap_y_3d'] = embeddings_3d[:, 1]
+df['umap_z_3d'] = embeddings_3d[:, 2]
+
+# OPTION 1: Interactive with ipywidgets
+if WIDGETS_AVAILABLE:
+    def plot_3d_interactive(num_chunks):
+        plot_df = df.head(num_chunks)
+        
+        fig = go.Figure(data=[go.Scatter3d(
+            x=plot_df['umap_x_3d'],
+            y=plot_df['umap_y_3d'],
+            z=plot_df['umap_z_3d'],
+            mode='markers',
+            marker=dict(
+                size=5,
+                color=plot_df['chunk_id'],
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(title="Chunk ID"),
+                line=dict(color='black', width=0.5)
+            ),
+            text=[f"Chunk {i}: {text[:100]}..." for i, text in zip(plot_df['chunk_id'], plot_df['text'])],
+            hoverinfo='text'
+        )])
+        
+        fig.update_layout(
+            title=f'3D UMAP Projection of {num_chunks} Chunk Embeddings',
+            scene=dict(
+                xaxis_title='UMAP Dimension 1',
+                yaxis_title='UMAP Dimension 2',
+                zaxis_title='UMAP Dimension 3'
+            ),
+            width=900,
+            height=700
+        )
+        
+        fig.show()
+    
+    interact(plot_3d_interactive, 
+             num_chunks=widgets.IntSlider(min=5, max=len(chunks), step=5, value=min(50, len(chunks))))
+else:
+    # OPTION 2: Simple version
+    NUM_CHUNKS_3D = min(50, len(chunks))  # Modify this value
+    
+    plot_df = df.head(NUM_CHUNKS_3D)
+    
+    fig = go.Figure(data=[go.Scatter3d(
+        x=plot_df['umap_x_3d'],
+        y=plot_df['umap_y_3d'],
+        z=plot_df['umap_z_3d'],
+        mode='markers',
+        marker=dict(
+            size=5,
+            color=plot_df['chunk_id'],
+            colorscale='Viridis',
+            showscale=True,
+            colorbar=dict(title="Chunk ID"),
+            line=dict(color='black', width=0.5)
+        ),
+        text=[f"Chunk {i}: {text[:100]}..." for i, text in zip(plot_df['chunk_id'], plot_df['text'])],
+        hoverinfo='text'
+    )])
+    
+    fig.update_layout(
+        title=f'3D UMAP Projection of {NUM_CHUNKS_3D} Chunk Embeddings',
+        scene=dict(
+            xaxis_title='UMAP Dimension 1',
+            yaxis_title='UMAP Dimension 2',
+            zaxis_title='UMAP Dimension 3'
+        ),
+        width=900,
+        height=700
+    )
+    
+    fig.show()
+    
+    print("\n💡 To change the number of chunks displayed, modify NUM_CHUNKS_3D above")
+    print("💡 You can rotate, zoom, and pan the 3D plot by clicking and dragging!")
