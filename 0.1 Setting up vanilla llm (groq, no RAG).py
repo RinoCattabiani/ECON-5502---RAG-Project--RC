@@ -41,3 +41,53 @@ while True:
 
     # show the reply
     print("\nBot:", bot_text)
+
+########################################################
+
+    # SETTING UP DEPENDICIES
+
+########################################################
+
+    # Import all required libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.graph_objects as go
+import plotly.express as px
+from sentence_transformers import SentenceTransformer, util
+import umap
+from tqdm.auto import tqdm
+import warnings
+import torch
+import os
+# Disable parallelism for tokenizers to avoid warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Optional: ipywidgets for interactive controls
+try:
+    from ipywidgets import interact, widgets
+    WIDGETS_AVAILABLE = True
+    print("✓ ipywidgets available - interactive controls enabled")
+except ImportError:
+    WIDGETS_AVAILABLE = False
+    print("⚠ ipywidgets not available - using simple variables instead")
+
+# Configure display settings
+warnings.filterwarnings('ignore')
+pd.set_option('display.max_colwidth', 100)
+plt.style.use('seaborn-v0_8-darkgrid')
+
+# Print versions
+print("\n=== Package Versions ===")
+print(f"pandas: {pd.__version__}")
+print(f"numpy: {np.__version__}")
+
+# Check for GPU availability
+if torch.cuda.is_available():
+    print(f"\n✓ GPU available: {torch.cuda.get_device_name(0)}")
+    print("  Embedding generation will be faster!")
+else:
+    print("\n⚠ No GPU detected - using CPU (embeddings will be slower)")
+
+print("\n✓ All imports successful! Ready to proceed.")
