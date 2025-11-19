@@ -44,11 +44,11 @@ while True:
 
 ########################################################
 
-    # SETTING UP DEPENDICIES
+# SETTING UP DEPENDICIES
 
 ########################################################
 
-    # Import all required libraries
+# Import all required libraries
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -91,3 +91,28 @@ else:
     print("\n⚠ No GPU detected - using CPU (embeddings will be slower)")
 
 print("\n✓ All imports successful! Ready to proceed.")
+
+########################################################
+
+# MODEL CONFIGURATION
+
+########################################################
+
+# MODEL CONFIGURATION
+# Change this to switch between models
+MODEL_NAME = "all-mpnet-base-v2"  # Options: "all-MiniLM-L6-v2" or "all-mpnet-base-v2"
+
+# Load the model
+print(f"Loading model: {MODEL_NAME}...")
+model = SentenceTransformer(MODEL_NAME)
+
+# Display model information
+embedding_dim = model.get_sentence_embedding_dimension()
+print(f"\n✓ Model loaded successfully!")
+print(f"  Embedding dimensions: {embedding_dim}")
+print(f"  Max sequence length: {model.max_seq_length} tokens")
+
+ # if MODEL_NAME == "all-MiniLM-L6-v2":
+   # print("\n💡 Tip: For better quality (but slower speed), try 'all-mpnet-base-v2'")
+# else:
+   # print("\n💡 You're using the higher-quality model - embeddings will be more accurate!")
