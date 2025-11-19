@@ -267,3 +267,68 @@ for i, chunk in enumerate(chunks[:5]):
     print(chunk)
     print(f"\nLength: {len(chunk)} characters")
     print("\t==========")
+
+########################################################
+
+# CHUNK EMBEDDING
+
+########################################################
+
+# Generate embeddings for all chunks
+print(f"Generating embeddings for {len(chunks)} chunks...")
+print(f"Model: {MODEL_NAME} ({embedding_dim} dimensions)")
+print("\nThis may take a minute...\n")
+
+# Generate embeddings with progress bar
+embeddings = model.encode(chunks, show_progress_bar=True, convert_to_numpy=True)
+
+print(f"\n✓ Embeddings generated!")
+print(f"  Shape: {embeddings.shape}")
+print(f"  {embeddings.shape[0]} chunks × {embeddings.shape[1]} dimensions")
+print(f"  Memory: ~{embeddings.nbytes / 1024 / 1024:.2f} MB")
+
+############################
+
+# Visualizing a Single Embedding 
+
+############################
+
+# Visualize the embedding 
+# Display first chunk's embedding
+sample_embedding = embeddings[0]
+
+print("First Chunk Text:")
+print("="*50)
+print(chunks[0][:200] + "...")
+print("\n" + "="*50)
+
+print(f"\nIts Embedding (first 20 dimensions):")
+print(sample_embedding[:20])
+
+print(f"\nFull embedding shape: {sample_embedding.shape}")
+print(f"Value range: [{sample_embedding.min():.3f}, {sample_embedding.max():.3f}]")
+print(f"Mean: {sample_embedding.mean():.3f}")
+print(f"Std dev: {sample_embedding.std():.3f}")
+
+# Visualize the embedding
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 4))
+
+# Bar chart of first 50 dimensions
+ax1.bar(range(50), sample_embedding[:50], color='steelblue', alpha=0.7)
+ax1.set_xlabel('Dimension Index')
+ax1.set_ylabel('Value')
+ax1.set_title(f'First 50 Dimensions of Embedding')
+ax1.grid(alpha=0.3)
+
+# Heatmap of all dimensions
+im = ax2.imshow(sample_embedding.reshape(-1, 1).T, cmap='RdBu_r', aspect='auto')
+ax2.set_xlabel('Dimension Index')
+ax2.set_yticks([])
+ax2.set_title(f'All {len(sample_embedding)} Dimensions (Heatmap)')
+plt.colorbar(im, ax=ax2)
+
+plt.tight_layout()
+plt.show()
+
+print("\n💡 Each dimension captures different semantic aspects of the text.")
+print("   Similar chunks will have similar patterns across these dimensions.")
